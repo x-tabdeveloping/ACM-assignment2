@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import joblib
 import numpyro.distributions as dist
 from numpyro.diagnostics import summary
+from tqdm import tqdm
 
 from agents import bayesian_rl_agent, simulate_agent
 
@@ -34,8 +35,9 @@ def main():
     key = jax.random.key(0)
     beta_rts = jnp.linspace(0.1, 2.0, 5)
     lrs = jnp.linspace(0, 2.0, 5)
-    for i, beta_rt in enumerate(beta_rts):
+    for i, beta_rt in enumerate(tqdm(beta_rts, desc="Running all simulations")):
         for j, lr in enumerate(lrs):
+            print(f"Running beta_rt={beta_rt}; lr={lr}")
             key, subkey = jax.random.split(key)
             ys = simulate_reset_change_rate(
                 subkey,
@@ -67,4 +69,9 @@ def main():
                 "summary": _summary,
                 "extra_fields": extra_fields,
             }
+            print("Saving run...")
             joblib.dump(res, out_dir.joinpath(f"recovery_{i}_{j}.joblib"))
+
+
+if __name__ == "__main__":
+    main()
