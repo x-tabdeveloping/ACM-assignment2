@@ -17,10 +17,6 @@ def take(pytree, index):
     return jax.tree.unflatten(treedef, leaves)
 
 
-def simulate_random(rng_key, rate: float = 0.5, n_trials: int = 120):
-    return jax.random.binomial(rng_key, n=1, p=rate, shape=n_trials)
-
-
 def update_posterior(state, y, lr=1.0):
     """Updating posterior with the given learning rate,
     which corresponds to the exponent of the likelihood when updating the posterior.
@@ -53,11 +49,13 @@ def apply_concentration(belief, tau=1.0):
 
 
 def rt_distribution(alpha, beta, uncertainty):
+    """Returns distribution of reaction times."""
     return dist.LogNormal(beta * uncertainty, alpha)
 
 
 @ft.compact
 def bayesian_rl_agent(self, ys, rt=None, prior_a=1.0, prior_b=1.0):
+    """Bayesian reinforcement-learning agent model in NumPyro."""
     self.lr = dist.Exponential(1.0)
     belief = trace_beliefs({"a": prior_a, "b": prior_b}, ys, lr=self.lr)
     if rt is not None:
@@ -75,6 +73,7 @@ def bayesian_rl_agent(self, ys, rt=None, prior_a=1.0, prior_b=1.0):
 def simulate_agent(
     rng_key, ys, lr, alpha_rt=None, beta_rt=None, prior_a=1.0, prior_b=1.0
 ):
+    """Simulates a run of the agent based on parameters."""
     init_belief = {"a": prior_a, "b": prior_a}
     beliefs = trace_beliefs(init_belief, ys, lr=lr)
     if alpha_rt is None:
@@ -82,7 +81,7 @@ def simulate_agent(
         alpha_rt = dist.Exponential(1.0).sample(subkey)
     if beta_rt is None:
         rng_key, subkey = jax.random.split(rng_key)
-        beta_rt = dist.Normal(0, 0.5).sample(subkey)
+        beta_rt = dist.Normal(0, 1.0).sample(subkey)
     rng_key, subkey = jax.random.split(rng_key)
     choices = dist.BetaBinomial(beliefs["a"], beliefs["b"], total_count=1).sample(
         subkey
@@ -90,4 +89,5 @@ def simulate_agent(
     uncertainty = 1 / (beliefs["a"] + beliefs["b"])
     rng_key, subkey = jax.random.split(rng_key)
     rt = rt_distribution(alpha_rt, beta_rt, uncertainty).sample(subkey)
-    return choices, rt
+    params = {"alpha_rt": alpha_rt, "beta_rt": beta_rt, "lr": lr}
+    return choices, rt, params
