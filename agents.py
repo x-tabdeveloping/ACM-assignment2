@@ -58,19 +58,33 @@ def rt_distribution(belief, alpha, beta, sigma):
 
 
 @ft.compact
-def bayesian_rl_agent(self, ys, rt=None, prior_a=1.0, prior_b=1.0):
+def bayesian_rl_agent(
+    self,
+    ys,
+    rt=None,
+    prior_a=1.0,
+    prior_b=1.0,
+    alpha_rt_scale=1.0,
+    beta_rt_scale=1.0,
+    sigma_rt_scale=0.5,
+):
     """Bayesian reinforcement-learning agent model in NumPyro."""
+    # Lambda/learning rate parameter
     self.lr = dist.Exponential(1.0)
     belief = trace_beliefs({"a": prior_a, "b": prior_b}, ys, lr=self.lr)
-    if rt is not None:
-        self.alpha_rt = dist.Exponential(1.0)
-        self.beta_rt = dist.Exponential(1.0)
-        self.sigma_rt = dist.Exponential(0.5)
-        numpyro.sample(
-            "rt",
-            rt_distribution(belief, self.alpha_rt, self.beta_rt, self.sigma_rt),
-            obs=rt,
-        )
+    # Priors
+    # In the paper I call this d0, it is the intercept of drift
+    self.alpha_rt = dist.Exponential(alpha_rt_scale)
+    # Gamma param/effect of uncertainty on reaction times
+    self.beta_rt = dist.Exponential(beta_rt_scale)
+    # Dispersion of the random walk
+    self.sigma_rt = dist.Exponential(sigma_rt_scale)
+    # Sampling reaction times
+    numpyro.sample(
+        "rt",
+        rt_distribution(belief, self.alpha_rt, self.beta_rt, self.sigma_rt),
+        obs=rt,
+    )
     return dist.BetaBinomial(belief["a"], belief["b"], total_count=1)
 
 
