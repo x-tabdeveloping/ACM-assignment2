@@ -67,10 +67,11 @@ def bayesian_rl_agent(
     alpha_rt_scale=1.0,
     beta_rt_scale=1.0,
     sigma_rt_scale=0.5,
+    lr_scale=1.0,
 ):
     """Bayesian reinforcement-learning agent model in NumPyro."""
     # Lambda/learning rate parameter
-    self.lr = dist.Exponential(1.0)
+    self.lr = dist.Exponential(lr_scale)
     belief = trace_beliefs({"a": prior_a, "b": prior_b}, ys, lr=self.lr)
     # Priors
     # In the paper I call this d0, it is the intercept of drift
