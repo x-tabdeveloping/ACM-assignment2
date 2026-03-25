@@ -7,6 +7,8 @@ import numpy as np
 import numpyro
 import numpyro.distributions as dist
 
+from wald_dist import Wald
+
 numpyro.set_host_device_count(4)
 
 
@@ -48,9 +50,11 @@ def apply_concentration(belief, tau=1.0):
     return {"a": a1, "b": b1}
 
 
-def rt_distribution(alpha, beta, uncertainty):
+def rt_distribution(belief, alpha, beta, sigma):
     """Returns distribution of reaction times."""
-    return dist.LogNormal(beta * uncertainty, alpha)
+    certainty = belief["a"] + belief["b"]
+    drift = alpha + beta * certainty
+    return Wald(loc=1 / drift, lam=(1 / sigma) ** 2)
 
 
 @ft.compact
@@ -60,18 +64,25 @@ def bayesian_rl_agent(self, ys, rt=None, prior_a=1.0, prior_b=1.0):
     belief = trace_beliefs({"a": prior_a, "b": prior_b}, ys, lr=self.lr)
     if rt is not None:
         self.alpha_rt = dist.Exponential(1.0)
-        self.beta_rt = dist.Normal(1.0, 1.0)
-        uncertainty = 1 / (belief["a"] + belief["b"])
+        self.beta_rt = dist.Exponential(1.0)
+        self.sigma_rt = dist.Exponential(0.5)
         numpyro.sample(
             "rt",
-            rt_distribution(self.alpha_rt, self.beta_rt, uncertainty),
+            rt_distribution(belief, self.alpha_rt, self.beta_rt, self.sigma_rt),
             obs=rt,
         )
     return dist.BetaBinomial(belief["a"], belief["b"], total_count=1)
 
 
 def simulate_agent(
-    rng_key, ys, lr, alpha_rt=None, beta_rt=None, prior_a=1.0, prior_b=1.0
+    rng_key,
+    ys,
+    lr,
+    alpha_rt=None,
+    beta_rt=None,
+    sigma_rt=None,
+    prior_a=1.0,
+    prior_b=1.0,
 ):
     """Simulates a run of the agent based on parameters."""
     init_belief = {"a": prior_a, "b": prior_a}
@@ -81,13 +92,16 @@ def simulate_agent(
         alpha_rt = dist.Exponential(1.0).sample(subkey)
     if beta_rt is None:
         rng_key, subkey = jax.random.split(rng_key)
-        beta_rt = dist.Normal(0, 1.0).sample(subkey)
+        beta_rt = dist.Exponential(1.0).sample(subkey)
+    if sigma_rt is None:
+        rng_key, subkey = jax.random.split(rng_key)
+        sigma_rt = dist.Exponential(0.5).sample(subkey)
     rng_key, subkey = jax.random.split(rng_key)
     choices = dist.BetaBinomial(beliefs["a"], beliefs["b"], total_count=1).sample(
         subkey
     )
-    uncertainty = 1 / (beliefs["a"] + beliefs["b"])
     rng_key, subkey = jax.random.split(rng_key)
-    rt = rt_distribution(alpha_rt, beta_rt, uncertainty).sample(subkey)
-    params = {"alpha_rt": alpha_rt, "beta_rt": beta_rt, "lr": lr}
+    rt_dist = rt_distribution(beliefs, alpha_rt, beta_rt, sigma_rt)
+    rt = rt_dist.sample(subkey)
+    params = {"alpha_rt": alpha_rt, "beta_rt": beta_rt, "lr": lr, "sigma_rt": sigma_rt}
     return choices, rt, params
