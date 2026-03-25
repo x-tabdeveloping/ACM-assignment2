@@ -44,7 +44,7 @@ def main():
                 learning_phase=50,
                 unlearning_phase=50,
                 rate_shape=0.1,
-                n_trials=1000,
+                n_trials=500,
             )
             key, subkey = jax.random.split(key)
             xs, rt, params = simulate_agent(
@@ -52,7 +52,8 @@ def main():
                 ys,
                 lr=lr,
                 beta_rt=beta_rt,
-                alpha_rt=0.2,
+                alpha_rt=0.1,
+                sigma_rt=0.2,
                 prior_a=1.0,
                 prior_b=1.0,
             )
@@ -71,6 +72,23 @@ def main():
             }
             print("Saving run...")
             joblib.dump(res, out_dir.joinpath(f"recovery_{i}_{j}.joblib"))
+            if i == 0:
+                # Without RT
+                model = bayesian_rl_agent.add_input(ys).condition_on(xs)
+                key, subkey = jax.random.split(key)
+                mcmc = model.sample_posterior(
+                    subkey, max_tree_depth=12, dense_mass=True
+                )
+                samples = mcmc.get_samples(group_by_chain=True)
+                extra_fields = mcmc.get_extra_fields(group_by_chain=True)
+                _summary = summary(samples, group_by_chain=True)
+                res = {
+                    "params": params,
+                    "samples": samples,
+                    "summary": _summary,
+                    "extra_fields": extra_fields,
+                }
+                joblib.dump(res, out_dir.joinpath(f"lr-only-recovery_{j}.joblib"))
 
 
 if __name__ == "__main__":
